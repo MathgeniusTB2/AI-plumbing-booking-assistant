@@ -17,10 +17,17 @@ from booking_assistant.scheduler import load_plumbers
 from booking_assistant.scheduler import plumber_matches_issue
 from booking_assistant.schemas import booking_info_complete
 from booking_assistant.schemas import merge_turn_into_slots
+from booking_assistant.schemas import missing_booking_fields
+from booking_assistant.schemas import REQUIRED_BOOKING_SLOTS
 
 load_dotenv()
 
-st.set_page_config(page_title="Plumbing booking assistant", page_icon=None)
+st.set_page_config(
+    page_title="Plumbing booking assistant",
+    page_icon="💬",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
 def use_llm() -> bool:
@@ -43,6 +50,9 @@ def init_state() -> None:
         "conversation_phase": "collecting",
         "appointment": None,
         "messages": [],
+        "last_booking_notifications": None,
+        "_toast_llm_unreachable": False,
+        "_booking_balloons_once": False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -54,40 +64,99 @@ def reset_booking() -> None:
     st.session_state.conversation_phase = "collecting"
     st.session_state.appointment = None
     st.session_state.messages = []
+    st.session_state.last_booking_notifications = None
+
+
+_SLOT_LABELS: dict[str, str] = {
+    "issue_category": "Issue type",
+    "urgency": "Urgency",
+    "location": "Location",
+    "customer_name": "Your name",
+    "customer_phone_or_email": "Phone or email",
+}
+
+_SLOT_TRACK_KEYS = (*REQUIRED_BOOKING_SLOTS, "customer_phone_or_email")
+
+
+def render_slot_progress(slots: dict) -> None:
+    miss = missing_booking_fields(dict(slots))
+    miss_set = set(miss)
+    total = len(_SLOT_TRACK_KEYS)
+    filled = total - len(miss_set)
+    st.progress(min(1.0, filled / total) if total else 0.0)
+    st.metric("Fields complete", f"{filled} / {total}")
+
+    bullets: list[str] = []
+    for key in _SLOT_TRACK_KEYS:
+        human = _SLOT_LABELS.get(key, key.replace("_", " "))
+        if key in miss_set:
+            bullets.append(f"{human}: *needed*")
+        else:
+            bullets.append(f"{human}: ✓")
+    st.markdown("  \n".join([f"- {b}" for b in bullets]))
+
+    tn = slots.get("preferred_time_notes") if slots else None
+    if tn and str(tn).strip():
+        st.info(f"_Optional timing:_ {tn}")
 
 
 init_state()
 
+if use_llm() and not local_llm_reachable() and not st.session_state._toast_llm_unreachable:
+    st.toast("Using rule-based extraction (local LLM unreachable).", icon="ℹ️")
+    st.session_state._toast_llm_unreachable = True
+
 st.title("AI plumbing booking assistant")
-st.caption(
-    "Describe your plumbing issue in plain language. Mock scheduling and calendar — no real SMS or OAuth."
-)
-st.caption("**Tradie view:** open **Tradie dispatch** from the left sidebar (multipage menu).")
+st.markdown("##### Book a plumber in plain English — mock scheduler, no SMS or OAuth.")
+st.caption("Mock scheduling and calendar data only.")
 
 with st.sidebar:
-    st.header("Assistant mode")
+    st.markdown("###### Navigation")
+    try:
+        st.page_link("pages/2_Tradie_dispatch.py", label="Tradie dispatch board")
+    except Exception:
+        st.markdown("Tradie dispatch: use the sidebar **Pages** menu.")
+
+    st.divider()
+
+    st.markdown("###### Assistant mode")
     if use_llm():
         if local_llm_reachable():
             st.success(
-                "Local LLM reachable — extraction uses your **free** OpenAI-compatible "
-                "server (e.g. Ollama)."
+                "Local LLM reachable — **free** OpenAI-compatible endpoint (e.g. Ollama)."
             )
-            st.caption(f"Model: `{resolved_local_llm_model()}`")
+            st.caption(f"Model `{resolved_local_llm_model()}`")
         else:
             st.warning(
-                "`USE_LLM=1` but no server at `LOCAL_LLM_BASE_URL` "
-                "(start [Ollama](https://ollama.com/), or set `USE_LLM=0` for rules-only)."
+                "`USE_LLM=1` — start your server at `LOCAL_LLM_BASE_URL`, "
+                "or set `USE_LLM=0`."
             )
     else:
-        st.info("Heuristic-only mode (`USE_LLM=0`) — no local model.")
+        st.info("Heuristic-only (`USE_LLM=0`).")
 
-    if st.button("New booking"):
+    st.divider()
+    st.markdown("###### Booking progress")
+    render_slot_progress(st.session_state.slots)
+
+    notif = st.session_state.last_booking_notifications
+    if notif:
+        st.success("Latest booking confirmed — drafts below.")
+        with st.expander("Mock notification drafts", expanded=False):
+            t1, t2 = st.tabs(["Customer SMS / email", "Tradie dispatch"])
+            with t1:
+                st.text(notif["customer"])
+            with t2:
+                st.text(notif["plumber"])
+
+    if st.button("New booking", type="primary", use_container_width=True):
         reset_booking()
         st.rerun()
 
     if st.session_state.slots:
-        with st.expander("Extracted slots (session)"):
+        with st.expander("Extracted slots (JSON)", expanded=False):
             st.json(st.session_state.slots)
+
+st.divider()
 
 for role, content in st.session_state.messages:
     with st.chat_message(role):
@@ -114,7 +183,8 @@ st.session_state.messages.append(("user", user_in.strip()))
 with st.chat_message("user"):
     st.markdown(user_in.strip())
 
-turn = run_extraction(user_in, dict(st.session_state.slots))
+with st.spinner("Understanding your message…"):
+    turn = run_extraction(user_in, dict(st.session_state.slots))
 merged = merge_turn_into_slots(dict(st.session_state.slots), turn)
 st.session_state.slots = merged
 
@@ -137,33 +207,25 @@ if booking_info_complete(merged):
             st.markdown(no_match)
         st.stop()
 
-    appt = find_appointment_slot(merged)
+    with st.spinner("Finding the next available slot…"):
+        appt = find_appointment_slot(merged)
     if appt:
         cust = customer_confirmation_text(appt)
         plum = plumber_notification_text(appt)
-        summary = (
-            f"✅ **Appointment confirmed**\n\n"
-            f"- **When:** {appt.start:%a %d %b %Y, %H:%M} → {appt.end:%H:%M}\n"
-            f"- **Plumber:** {appt.plumber_name}\n"
-            f"- **Job:** {appt.issue_summary}\n"
+        if not st.session_state._booking_balloons_once:
+            st.balloons()
+            st.session_state._booking_balloons_once = True
+
+        summary_body = (
+            f"**{appt.start:%a %d %b, %H:%M}–{appt.end:%H:%M}** · **{appt.plumber_name}** · {appt.issue_summary}\n\n"
+            f"Draft notifications are in the sidebar (**Mock notification drafts**)."
         )
-        history = (
-            summary
-            + "\n**Mock — customer confirmation**\n"
-            + cust
-            + "\n\n**Mock — plumber notification**\n"
-            + plum
-        )
+        st.session_state.messages.append(("assistant", summary_body))
+        st.session_state.last_booking_notifications = {"customer": cust, "plumber": plum}
         with st.chat_message("assistant"):
-            st.markdown(summary)
-            c1, c2 = st.columns(2)
-            with c1:
-                with st.expander("Mock — customer SMS / email"):
-                    st.write(cust)
-            with c2:
-                with st.expander("Mock — plumber dispatch"):
-                    st.write(plum)
-        st.session_state.messages.append(("assistant", history))
+            st.success("Appointment confirmed.")
+            st.markdown(summary_body)
+
         st.session_state.conversation_phase = "booked"
         st.session_state.appointment = appt
     else:

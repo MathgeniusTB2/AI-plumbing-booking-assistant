@@ -37,6 +37,8 @@ Run the app:
 python -m streamlit run app.py
 ```
 
+Visual theme and chrome (colors, background, minimal toolbar) live in [`.streamlit/config.toml`](.streamlit/config.toml). Edit the `[theme]` section to rebrand.
+
 Open the URL Streamlit prints (usually [http://localhost:8501](http://localhost:8501)). Use the sidebar **multipage** menu to switch between **Customer** and **Tradie dispatch**.
 
 ## Environment variables
