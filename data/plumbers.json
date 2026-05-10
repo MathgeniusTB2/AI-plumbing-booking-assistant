@@ -1,0 +1,38 @@
+[
+  {
+    "id": "plumber-alex",
+    "name": "Alex Rivers",
+    "skills": ["leak", "burst_pipe", "tap", "general"],
+    "slot_minutes": 120,
+    "availability": [
+      {"weekday": 0, "start": "08:00", "end": "16:00"},
+      {"weekday": 1, "start": "08:00", "end": "17:00"},
+      {"weekday": 2, "start": "08:00", "end": "17:00"},
+      {"weekday": 3, "start": "08:00", "end": "17:00"},
+      {"weekday": 4, "start": "08:00", "end": "17:00"}
+    ]
+  },
+  {
+    "id": "plumber-sam",
+    "name": "Sam Nguyen",
+    "skills": ["blocked_drain", "toilet", "sewer", "general"],
+    "slot_minutes": 90,
+    "availability": [
+      {"weekday": 1, "start": "10:00", "end": "18:00"},
+      {"weekday": 2, "start": "10:00", "end": "18:00"},
+      {"weekday": 3, "start": "10:00", "end": "18:00"},
+      {"weekday": 5, "start": "09:00", "end": "13:00"}
+    ]
+  },
+  {
+    "id": "plumber-jordan",
+    "name": "Jordan Lee",
+    "skills": ["hot_water", "gas", "general"],
+    "slot_minutes": 120,
+    "availability": [
+      {"weekday": 0, "start": "09:00", "end": "15:00"},
+      {"weekday": 4, "start": "08:00", "end": "14:00"},
+      {"weekday": 5, "start": "08:00", "end": "14:00"}
+    ]
+  }
+]
