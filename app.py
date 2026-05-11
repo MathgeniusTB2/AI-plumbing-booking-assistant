@@ -253,3 +253,6 @@ else:
     st.session_state.messages.append(("assistant", reply))
     with st.chat_message("assistant"):
         st.markdown(reply)
+
+# Trigger a clean rerun so sidebar progress reflects this turn immediately.
+st.rerun()
