@@ -110,6 +110,17 @@ st.title("AI plumbing booking assistant")
 st.markdown("##### Book a plumber in plain English — mock scheduler, no SMS or OAuth.")
 st.caption("Mock scheduling and calendar data only.")
 
+# Prominent disclosure (only when AI extraction is OFF).
+if not (use_llm() and local_llm_reachable()):
+    st.warning(
+        "AI extraction is **OFF**: this app is using **rule-based** (regex/keywords) extraction only. "
+        "No LLM is called for understanding your messages.\n\n"
+        "**To turn AI on:** set `USE_LLM=1`, start an OpenAI-compatible local server at "
+        "`LOCAL_LLM_BASE_URL`, then restart the app. (If the server is unreachable, the app will "
+        "auto-fallback to rule-based extraction.)",
+        icon="⚠️",
+    )
+
 with st.sidebar:
     st.markdown("###### Navigation")
     try:
